@@ -1,9 +1,15 @@
 from lxml import etree
 import requests
 import time
+import logging
 
-API_KEY = "YOUR API KEY"
-DOMAIN = "DOMAIN.COM"
+# Modify to your own API key, domain and hosts
+API_KEY = "12345"
+DOMAIN = "abc.com"
+HOSTS = ["aaa.abc.com", "bbb.abc.com", "ccc.abc.com"]
+
+# Log path
+LOG_PATH = "/path/to/namesilo_ddns.log"
 
 
 class Namesilo:
@@ -12,24 +18,37 @@ class Namesilo:
         self.ip = ""
         self.domain = DOMAIN
         self.record_ids = []
-        self.hosts = []
+        self.hosts = HOSTS
+        self.logger = self.set_logger()
         self.session = requests.Session()
         self.start()
 
+    def set_logger(self):
+        logger = logging.getLogger('namesilo_ddns_logger')
+        logger.setLevel(logging.DEBUG)
+        file_handler = logging.FileHandler(LOG_PATH, mode='w')
+        formatter = logging.Formatter("%(asctime)s %(message)s")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        return logger
+
     def start(self):
+        self.get_record_ids()
         while(True):
-            ip = self.lst()
+            ip = self.get_ip()
             if self.ip == ip:
-                time.sleep(3600)
+                self.logger.info('IP not changed')
+                time.sleep(1200)
                 continue
 
-            print('New ip address: ' + ip)
+            self.ip = ip
+            self.logger.info('New IP address: ' + ip)
             for i in range(len(self.record_ids)):
                 rrid = self.record_ids[i]
                 host = self.hosts[i].replace('.'+self.domain, '')
                 self.upd(rrid, host)
 
-    def lst(self):
+    def get_record_ids(self):
         url = 'https://www.namesilo.com/api/dnsListRecords'
         params = {
             'version': '1',
@@ -39,10 +58,14 @@ class Namesilo:
         }
         r = self.session.get(url, params=params)
         tree = etree.HTML(r.text)
-        ip = tree.xpath('//namesilo/request/ip/text()')[0]
-        self.record_ids = tree.xpath('//namesilo/reply/resource_record[value="' + self.ip + '"]/record_id/text()')
-        self.hosts = tree.xpath('//namesilo/reply/resource_record[value="' + self.ip + '"]/host/text()')
-        return ip
+        for host in self.hosts:
+            record_id = tree.xpath('//namesilo/reply/resource_record[host="' + host + '"]/record_id/text()')[0]
+            self.logger.info(host + ' ' + record_id)
+            self.record_ids.append(record_id)
+
+    def get_ip(self):
+        r = requests.get('http://api.ipify.org')
+        return r.text
 
     def upd(self, rrid, host):
         url = 'https://www.namesilo.com/api/dnsUpdateRecord'
@@ -56,5 +79,7 @@ class Namesilo:
             'rrvalue': self.ip
         }
         self.session.get(url, params=params)
+        self.logger.info(r.text)
+
 
 n = Namesilo()
