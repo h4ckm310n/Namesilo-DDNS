@@ -36,6 +36,11 @@ class Namesilo:
         self.get_record_ids()
         while(True):
             ip = self.get_ip()
+            if ip == '':
+                self.logger.info('Fail to get IP')
+                time.sleep(300)
+                continue
+
             if self.ip == ip:
                 self.logger.info('IP not changed')
                 time.sleep(1200)
@@ -56,7 +61,14 @@ class Namesilo:
             'key': self.key,
             'domain': self.domain
         }
-        r = self.session.get(url, params=params)
+        while True:
+            try:
+                r = self.session.get(url, params=params)
+            except:
+                self.logger.info('Fail to get records')
+                time.sleep(300)
+            else:
+                break
         tree = etree.HTML(r.text)
         for host in self.hosts:
             record_id = tree.xpath('//namesilo/reply/resource_record[host="' + host + '"]/record_id/text()')[0]
@@ -64,8 +76,11 @@ class Namesilo:
             self.record_ids.append(record_id)
 
     def get_ip(self):
-        r = requests.get('http://api.ipify.org')
-        return r.text
+        try:
+            r = requests.get('http://api.ipify.org')
+            return r.text
+        except:
+            return ''
 
     def upd(self, rrid, host):
         url = 'https://www.namesilo.com/api/dnsUpdateRecord'
@@ -78,8 +93,13 @@ class Namesilo:
             'rrhost': host,
             'rrvalue': self.ip
         }
-        self.session.get(url, params=params)
-        self.logger.info(r.text)
+        try:
+            r = self.session.get(url, params=params)
+        except:
+            self.logger.info("Fail to update: " + host)
+            self.ip = ""
+        else:
+            self.logger.info(r.text)
 
 
 n = Namesilo()
